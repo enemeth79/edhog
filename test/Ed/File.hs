@@ -18,9 +18,10 @@ import qualified Hedgehog.Range    as Range
 
 import           Ed.Types          (Buffer (..), Cmd_Append (..),
                                     Cmd_AppendAt (..), Cmd_DeleteLine (..),
-                                    Cmd_PrintAll (..))
+                                    Cmd_PrintAll (..), getBufferLength)
 
 import           Turtle
+import           Turtle.Format     (d, format, (%))
 
 import           System.Posix.Temp (mkstemp)
 
@@ -41,7 +42,7 @@ readEdFile :: FilePath -> IO Text
 readEdFile edFile = T.readFile (T.unpack $ format fp edFile)
 
 genLineNum :: MonadGen m => Buffer v -> m Word
-genLineNum (Buffer b) = Gen.word (Range.linear 1 (fromIntegral $ length b))
+genLineNum b = Gen.word (Range.linear 1 (getBufferLength b))
 
 genTextInp :: MonadGen m => m Text
 genTextInp = Gen.text (Range.linear 1 100) Gen.alphaNum
@@ -140,8 +141,8 @@ cDeleteLine
   -> Command n m Buffer
 cDeleteLine edFile =
   let
-    gen (Buffer b) = Just $
-      Cmd_DeleteLine <$> Gen.word (Range.linear 1 (fromIntegral $ length b))
+    gen b = Just $
+      Cmd_DeleteLine <$> genLineNum b
 
     execute (Cmd_DeleteLine n) = evalIO $ do
       edCmdsOnFile edFile

@@ -18,6 +18,13 @@ newtype Buffer (v :: * -> *) =
   Buffer [Text]
   deriving (Show, Eq)
 
+getBufferLength :: Buffer v -> Word
+getBufferLength (Buffer b) = getTextLength b
+
+getTextLength :: [Text] -> Word
+getTextLength b = fromIntegral $ length b
+
+
 data Cmd_AppendAt (v :: * -> *) =
   Cmd_AppendAt Word Text
   deriving (Show, Eq)

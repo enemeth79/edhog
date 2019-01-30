@@ -22,11 +22,12 @@ import qualified Hedgehog.Range         as Range
 import           Ed.Types
 import           Turtle.Format          (d, format, (%))
 
+
 genLineNum :: MonadGen m => Buffer v -> m Word
-genLineNum (Buffer b) = Gen.word (Range.linear 1 (fromIntegral $ length b))
+genLineNum b = Gen.word (Range.linear 1 (getBufferLength b))
 
 genTextInp :: MonadGen m => m Text
-genTextInp = Gen.text (Range.linear 1 100) Gen.alphaNum
+genTextInp = Gen.text (Range.linear 1 10) Gen.alphaNum
 
 cAppendText
   :: ( MonadGen n
@@ -37,7 +38,7 @@ cAppendText
   -> Command n m Buffer
 cAppendText edProc =
   let
-    gen _ = Just $ Cmd_Append <$> (Gen.text (Range.linear 1 100) Gen.alphaNum)
+    gen _ = Just $ Cmd_Append <$> genTextInp
 
     execute (Cmd_Append t) = evalIO $ do
       let ec = edCmd edProc
@@ -86,21 +87,24 @@ cDeleteLine
   -> Command n m Buffer
 cDeleteLine edProc =
   let
-    gen (Buffer b) = Just $ Cmd_DeleteLine
-      <$> Gen.word (Range.linear 1 (fromIntegral $ length b))
+    gen b = Just $ Cmd_DeleteLine <$> genLineNum b
 
     execute (Cmd_DeleteLine n) = evalIO $ do
-      edCmd edProc $ format (d%"d") n
+      let ec = edCmd edProc
+      ec $ format (d%"d") n
+      ec ",p"
       readPrintedLines edProc
   in
     Command gen execute
     [ Require $ \(Buffer b) (Cmd_DeleteLine n) ->
-        n >= 0 && n < fromIntegral (length b) && not (null b)
+        n >= 0 && n < getTextLength b && not (null b)
 
     , Update $ \(Buffer b) (Cmd_DeleteLine n) _ ->
         Buffer
         . bifold
-        . first (take (fromIntegral n - 1))
+        . first (
+            take ((fromIntegral n) - 1)
+          )
         $ splitAt (fromIntegral n) b
 
     , Ensure $ \(Buffer old) (Buffer new) (Cmd_DeleteLine n) out -> do
@@ -128,12 +132,13 @@ cAppendAt edProc =
         [ format (d%"a") ln
         , i
         , "."
+        , ",p"
         ]
       >> readPrintedLines edProc
   in
     Command gen execute
     [ Require $ \(Buffer b) (Cmd_AppendAt ln _) ->
-        ln >= 0 && ln < fromIntegral (length b) && not (null b)
+        ln >= 0 && ln < getTextLength b && not (null b)
 
     , Update $ \(Buffer b) (Cmd_AppendAt ln i) _ ->
         Buffer
@@ -146,6 +151,7 @@ cAppendAt edProc =
         -- Can't get here without having perfomed a valid insert, so totes safe, right?...RIGHT!?
         new !! (fromIntegral ln) === i
     ]
+
 
 edCmd :: EdProc -> Text -> IO ()
 edCmd p c = T.hPutStrLn (_edIn p) c
@@ -162,7 +168,8 @@ readPrintedLines ed = go []
 prop_ed_blackbox_memory :: EdProc -> Property
 prop_ed_blackbox_memory edProc = property $ do
   let
-    cmds = ($ edProc) <$> [cAppendText, cPrintAll]
+    cmds = ($ edProc) <$> [cAppendText, cAppendAt, cPrintAll, cDeleteLine]
+
     initialState = Buffer mempty
 
   actions <- forAll $ Gen.sequential (Range.linear 1 10) initialState cmds
@@ -175,4 +182,3 @@ prop_ed_blackbox_memory edProc = property $ do
     edCmd edProc ",d"
 
   executeSequential initialState actions
-
