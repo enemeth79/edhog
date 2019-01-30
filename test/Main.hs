@@ -28,7 +28,7 @@ main1 = do
     EM.edCmd edProc "H"
 
     b <- checkSequential $ Group "ed (real deal)"
-       [ ("property_a_p_d", EM.prop_ed_blackbox_memory edProc)
+       [ ("property_a_p_d_j", EM.prop_ed_blackbox_memory edProc)
        ]
 
     EM.edCmd edProc "Q"
@@ -39,7 +39,7 @@ main1 = do
 
 main2 :: IO Bool
 main2 = checkSequential $ Group "Ed Black-Box State Machine Tests"
-  [ ("Cmds: [<n>a,a,<n>d,p]", EF.prop_ed_blackbox_file)
+  [ ("Cmds: [<n>a; a; <n>d; <n>,<n>j; p]", EF.prop_ed_blackbox_file)
   ]
 
 main :: IO ()

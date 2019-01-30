@@ -153,6 +153,51 @@ cAppendAt edProc =
     ]
 
 
+-- Joins the addressed lines, replacing them by a single line containing their joined text.
+-- If only one address is given, this command does nothing.
+-- If lines are joined, the current address is set to the address of the joined line.
+-- Else, the current address is unchanged.
+cJoinLines
+  :: ( MonadGen n
+     , MonadIO m
+     , MonadTest m
+     )
+  => EdProc
+  -> Command n m Buffer
+cJoinLines edProc =
+  let
+    gen b = Just $
+      Cmd_JoinLines <$> genLineNum b <*> genLineNum b
+
+    execute (Cmd_JoinLines ln1 ln2) = evalIO $ do
+      traverse_ (edCmd edProc)
+        [ format (d%","%d%"j") ln1 ln2
+        , ",p"
+        ]
+      readPrintedLines edProc
+  in
+    Command gen execute
+    [ Require $ \(Buffer b) (Cmd_JoinLines ln1 ln2) ->
+        ln1 >= 0 && ln1 < ln2 && ln2 < getTextLength b && not (null b)
+    , Update $ \(Buffer b) (Cmd_JoinLines ln1 ln2) _ ->
+        Buffer
+        . bifold
+        . second (
+            \content ->
+              let
+                parts = splitAt ((fromIntegral ln2) - (fromIntegral ln1) + 1) content
+                joinedPart = (T.concat . fst) parts
+                untouchedPart = snd parts
+              in
+                joinedPart : untouchedPart
+        )
+        $ splitAt ((fromIntegral ln1) - 1) b
+    , Ensure $ \(Buffer old) (Buffer new) (Cmd_JoinLines ln1 ln2) out -> do
+        T.unlines new === out
+        getTextLength new === (getTextLength old) - ((fromIntegral ln2) - (fromIntegral ln1) + 1) + 1
+    ]
+
+
 edCmd :: EdProc -> Text -> IO ()
 edCmd p c = T.hPutStrLn (_edIn p) c
 
@@ -168,7 +213,7 @@ readPrintedLines ed = go []
 prop_ed_blackbox_memory :: EdProc -> Property
 prop_ed_blackbox_memory edProc = property $ do
   let
-    cmds = ($ edProc) <$> [cAppendText, cAppendAt, cPrintAll, cDeleteLine]
+    cmds = ($ edProc) <$> [cAppendText, cAppendAt, cPrintAll, cDeleteLine, cJoinLines]
 
     initialState = Buffer mempty
 

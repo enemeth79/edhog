@@ -18,7 +18,8 @@ import qualified Hedgehog.Range    as Range
 
 import           Ed.Types          (Buffer (..), Cmd_Append (..),
                                     Cmd_AppendAt (..), Cmd_DeleteLine (..),
-                                    Cmd_PrintAll (..), getBufferLength)
+                                    Cmd_PrintAll (..), Cmd_JoinLines (..),
+                                    getBufferLength, getTextLength)
 
 import           Turtle
 import           Turtle.Format     (d, format, (%))
@@ -169,6 +170,52 @@ cDeleteLine edFile =
         new ^? ix (n' - 1) === old ^? ix n'
     ]
 
+-- Joins the addressed lines, replacing them by a single line containing their joined text.
+-- If only one address is given, this command does nothing.
+-- If lines are joined, the current address is set to the address of the joined line.
+-- Else, the current address is unchanged.
+cJoinLines
+  :: ( MonadGen n
+     , MonadIO m
+     , MonadTest m
+     )
+  => FilePath
+  -> Command n m Buffer
+cJoinLines edFile =
+  let
+    gen b = Just $
+      Cmd_JoinLines <$> genLineNum b <*> genLineNum b
+
+    execute (Cmd_JoinLines ln1 ln2) = evalIO $ do
+      edCmdsOnFile edFile
+        [ format (d%","%d%"j") ln1 ln2
+        , "w"
+        , "q"
+        ]
+      readEdFile edFile
+  in
+    Command gen execute
+    [ Require $ \(Buffer b) (Cmd_JoinLines ln1 ln2) ->
+        ln1 >= 0 && ln1 < ln2 && ln2 < getTextLength b && not (null b)
+    , Update $ \(Buffer b) (Cmd_JoinLines ln1 ln2) _ ->
+        Buffer
+        . bifold
+        . second (
+            \content ->
+              let
+                parts = splitAt ((fromIntegral ln2) - (fromIntegral ln1) + 1) content
+                joinedPart = (T.concat . fst) parts
+                untouchedPart = snd parts
+              in
+                joinedPart : untouchedPart
+        )
+        $ splitAt ((fromIntegral ln1) - 1) b
+    , Ensure $ \(Buffer old) (Buffer new) (Cmd_JoinLines ln1 ln2) out -> do
+        T.unlines new === out
+        length new === (length old) -  ((fromIntegral ln2) - (fromIntegral ln1) + 1) + 1
+    ]
+
+
 prop_ed_blackbox_file :: Property
 prop_ed_blackbox_file = property $ do
   -- Create our file to apply our ed commands to
@@ -176,7 +223,7 @@ prop_ed_blackbox_file = property $ do
 
   let
     -- Prepare our list of possible commands
-    cmds = ($ edFile) <$> [cAppendText, cPrintAll, cDeleteLine, cAppendAt]
+    cmds = ($ edFile) <$> [cAppendText, cPrintAll, cDeleteLine, cAppendAt, cJoinLines]
     -- Initialise our 'state'
     initialState = Buffer mempty
 

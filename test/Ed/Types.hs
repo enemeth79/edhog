@@ -52,3 +52,10 @@ newtype Cmd_DeleteLine (v :: * -> *) =
 
 instance HTraversable Cmd_DeleteLine where
   htraverse _ (Cmd_DeleteLine t) = pure (Cmd_DeleteLine t)
+
+data Cmd_JoinLines (v :: * -> *) =
+  Cmd_JoinLines Word Word
+  deriving (Show, Eq)
+
+instance HTraversable Cmd_JoinLines where
+  htraverse _ (Cmd_JoinLines n1 n2) = pure (Cmd_JoinLines n1 n2)
